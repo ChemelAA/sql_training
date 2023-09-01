@@ -1,0 +1,194 @@
+1) Initial clues: crime = murder, date = Jan.15, 2018, place = SQL City.
+    
+    --We can extract description for this crime from 'crime_scene_report' table:
+    
+    SELECT description 
+    FROM crime_scene_report 
+    WHERE type = "murder" AND date = 20180115 AND city = "SQL City"
+    
+    --Result:
+    
+    "Security footage shows that there were 2 witnesses. The first witness lives 
+    at the last house on ""Northwestern Dr"". The second witness, named Annabel, 
+    lives somewhere on ""Franklin Ave""."
+    
+    
+2) We go to the 'person' table for these two witnesses:
+
+    --First witnesses lives the last house on ""Northwestern Dr"":
+    
+    SELECT * 
+    FROM person 
+    WHERE address_street_name = "Northwestern Dr"
+    ORDER BY address_number desc
+    LIMIT 1
+    
+    --It is:
+    14887	Morty Schapiro	118009	4919	"Northwestern Dr"	111564949
+    
+    --Second witnesses lives on "Franklin Ave" and has name Annabel
+    
+    SELECT * 
+    FROM person 
+    WHERE address_street_name = "Franklin Ave" AND name LIKE "Annabel%"
+    
+    --It is:
+    16371	Annabel Miller	490173	103	      "Franklin Ave"	318771143
+    
+3) We have IDs, driver licenses and SSN of witnesses
+
+    --Lets check if they have been interviewed using 'interview' table:
+    
+    SELECT transcript
+    FROM interview 
+    WHERE person_id IN (14887, 16371)
+    
+    --Now we have two interview transcripts:
+    
+    "I heard a gunshot and then saw a man run out. He had a ""Get Fit Now Gym"" 
+    bag. The membership number on the bag started with ""48Z"". Only gold members 
+    have those bags. The man got into a car with a plate that included ""H42W""."
+    
+    I saw the murder happen, and I recognized the killer from my gym when I was 
+    working out last week on January the 9th.
+    
+4) We now know that the killer is connected with "Get Fit Now Gym". He/She is a 
+    gold member with membership number starts with "48Z" and with a car that has
+    "H42W" in a number. Also, killer was in the gym on January the 9th.
+    
+    --Lets check the gym database for the mentioned person:
+    
+    SELECT * 
+    FROM get_fit_now_member
+    WHERE id LIKE "48Z%" AND membership_status = "gold"
+    
+    --We have tho people:
+    "48Z7A"	"28819"	"Joe Germuska"	"20160305"	"gold"
+    "48Z55"	"67318"	"Jeremy Bowers"	"20160101"	"gold"
+    
+    --Explore also gym check-in database:
+    
+    SELECT * 
+    FROM get_fit_now_check_in 
+    WHERE check_in_date = 20180109 AND membership_id like "48Z%"
+    
+    --Also two records - both of them were in gym that day:
+    "48Z7A"	"20180109"	"1600"	"1730"
+    "48Z55"	"20180109"	"1530"	"1700"
+    
+    --Checking killer's car number:
+    
+    SELECT * 
+    FROM drivers_license 
+    where plate_number like "%H42W%"
+    
+    --We have 3 cars:
+    "183779"	"21"	"65"	"blue"	"blonde"	"female"	"H42W0X"	"Toyota"	"Prius"
+    "423327"	"30"	"70"	"brown"	"brown"	    "male"	    "0H42W2"	"Chevrolet"	"Spark LS"
+    "664760"	"21"	"71"	"black"	"black"	    "male"	    "4H42WR"	"Nissan"	"Altima"
+    
+    --First witness said "I saw a man run out", so we can leave only males
+    "423327"	"30"	"70"	"brown"	"brown"	    "male"	    "0H42W2"	"Chevrolet"	"Spark LS"
+    "664760"	"21"	"71"	"black"	"black"	    "male"	    "4H42WR"	"Nissan"	"Altima"
+    
+5) Now we have two driver license IDs for two drivers from the previous result:
+    423327 and 664760
+    
+    --We can check them in 'person' table:
+    
+    SELECT * 
+    FROM person 
+    wHERE license_id IN (423327, 664760)
+    
+    --Result:
+    "51739"	"Tushar Chandra"	"664760"	"312"	"Phi St"	            "137882671"
+    "67318"	"Jeremy Bowers"	    "423327"	"530"	"Washington Pl, Apt 3A"	"871539279"
+    
+    --One of them shoulb be a gold member of the gym:
+    SELECT * 
+    FROM get_fit_now_member 
+    where person_id in (SELECT id 
+        FROM person 
+        wHERE license_id IN (423327, 664760))
+        
+    --Result:
+    48Z55	67318	"Jeremy Bowers"	20160101	gold
+    
+6) So now our circle of suspects has narrowed down to only ONE person. Its time 
+    to check if "Jeremy Bowers" is the killer using the insertion trigger in the 
+    'solution' table:
+    
+    INSERT INTO solution VALUES (1, "Jeremy Bowers");
+    SELECT * from solution;
+    
+    --We will get:
+    "Congrats, you found the murderer! But wait, there's more... If you think 
+    you're up for a challenge, try querying the interview transcript of the 
+    murderer to find the real villain behind this crime. If you feel especially 
+    confident in your SQL skills, try to complete this final step with no more 
+    than 2 queries. Use this same INSERT statement with your new suspect to 
+    check your answer."
+
+    --So, we need to check the killer's interview transcript:
+    
+    SELECT transcript
+    FROM interview
+    WHERE person_id = 67318;
+    
+    --What we will get:
+    "I was hired by a woman with a lot of money. I don't know her name but I 
+    know she's around 5'5"" (65"") or 5'7"" (67""). She has red hair and she 
+    drives a Tesla Model S. I know that she attended the SQL Symphony Concert 
+    3 times in December 2017."
+    
+    --We were asked to find killer with no more than two queries, so we need to
+    use only one last query. We will use 3 tables at once: 'drivers_license',
+    'person' and 'facebook_event_checkin'. We also have the following clues:
+    Hair: red
+    Gender: female
+    Car: Tesla Model S
+    Event: SQL Symphony Concert (3 times)
+    Date: December 2017
+    
+    --The final query:
+    
+    SELECT p.name, count(*)
+    FROM person as p
+    join drivers_license as dl
+    on p.license_id = dl.id
+    join facebook_event_checkin as fb
+    on p.id = fb.person_id
+    where dl.car_make = "Tesla" AND dl.car_model = "Model S" AND dl.gender = "female" 
+    AND dl.hair_color = "red" AND fb.event_name = "SQL Symphony Concert"
+    AND fb.date LIKE "201712%"
+    group by p.name
+    
+    --As a result, we really have one person who meets all conditions and she
+    really was at SQL Symphony Concert 3 times in Dec 2017, namely, on 6, 12 and 29
+    of December:
+    "Miranda Priestly"	3
+    
+7) Lets check her for being a killer:
+
+    INSERT INTO solution VALUES (1, "Miranda Priestly");
+    SELECT * from solution;
+    
+    --Result:
+    
+    "Congrats, you found the brains behind the murder! Everyone in SQL City 
+    hails you as the greatest SQL detective of all time. Time to break out the 
+    champagne!"
+    
+    
+    THE END
+    
+    
+    
+    
+
+    
+
+    
+    
+
+    
